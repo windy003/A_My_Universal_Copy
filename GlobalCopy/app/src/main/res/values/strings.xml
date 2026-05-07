@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">我的全局复制</string>
+    <string name="tile_label">全局复制</string>
+    <string name="accessibility_service_description">全局复制需要无障碍权限来读取屏幕上的文本内容，以便您可以复制任何应用中的文字。</string>
+    <string name="btn_enable_accessibility">开启无障碍服务</string>
+    <string name="btn_enable_overlay">开启悬浮窗权限</string>
+    <string name="status_enabled">服务已开启</string>
+    <string name="status_disabled">服务未开启</string>
+    <string name="usage_hint">下拉通知栏，点击「全局复制」磁贴进入复制模式</string>
+    <string name="copy_mode_hint">点击文本区域即可复制</string>
+    <string name="copied_toast">已复制到剪贴板</string>
+    <string name="no_text_toast">未找到可复制的文本</string>
+    <string name="exit_hint">点击空白区域或返回键退出复制模式</string>
+</resources>

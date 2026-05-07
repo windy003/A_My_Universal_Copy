@@ -1,0 +1,364 @@
+package com.globalcopy.overlay
+
+import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
+import android.view.Gravity
+import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.View
+import android.view.inputmethod.InputMethodManager
+import android.widget.Button
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
+import com.globalcopy.R
+import com.globalcopy.service.GlobalCopyAccessibilityService.TextNodeInfo
+
+@SuppressLint("ViewConstructor")
+class CopyOverlayView(
+    context: Context,
+    private val textNodes: List<TextNodeInfo>,
+    private val language: String
+) : FrameLayout(context) {
+
+    var onDismissListener: (() -> Unit)? = null
+
+    private val canvasView: CanvasOverlay
+    private val bottomPanel: LinearLayout
+    private val editText: EditText
+    private var selectedIndex = -1
+
+    init {
+        canvasView = CanvasOverlay(context)
+        addView(canvasView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+
+        bottomPanel = createBottomPanel()
+        bottomPanel.visibility = View.GONE
+        val panelParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+        panelParams.gravity = Gravity.BOTTOM
+        addView(bottomPanel, panelParams)
+
+        editText = bottomPanel.findViewById(EDIT_TEXT_ID)
+
+        isFocusable = true
+        isFocusableInTouchMode = true
+    }
+
+    private fun createBottomPanel(): LinearLayout {
+        val panel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.argb(245, 40, 40, 40))
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            elevation = 8f
+        }
+
+        val headerRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val label = TextView(context).apply {
+            text = if (language == "zh") "识别文本" else "Recognized Text"
+            setTextColor(Color.argb(180, 255, 255, 255))
+            textSize = 12f
+        }
+        headerRow.addView(label, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+
+        val closeBtn = TextView(context).apply {
+            text = "✕"
+            setTextColor(Color.WHITE)
+            textSize = 18f
+            setPadding(dp(8), 0, 0, 0)
+            setOnClickListener { hideBottomPanel() }
+        }
+        headerRow.addView(closeBtn, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+
+        panel.addView(headerRow, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+
+        val et = EditText(context).apply {
+            id = EDIT_TEXT_ID
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.argb(100, 255, 255, 255))
+            hint = if (language == "zh") "点击上方文本区域..." else "Tap a text area above..."
+            textSize = 15f
+            setBackgroundColor(Color.argb(60, 255, 255, 255))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            minLines = 2
+            maxLines = 6
+        }
+        val etParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(8) }
+        panel.addView(et, etParams)
+
+        val btnRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+        }
+
+        val copyBtn = Button(context).apply {
+            text = if (language == "zh") "复制" else "Copy"
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.argb(200, 33, 150, 243))
+            setPadding(dp(24), dp(6), dp(24), dp(6))
+            textSize = 14f
+            setOnClickListener { copyText() }
+        }
+
+        val copyAllBtn = Button(context).apply {
+            text = if (language == "zh") "复制全部" else "Copy All"
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.argb(200, 76, 175, 80))
+            setPadding(dp(24), dp(6), dp(24), dp(6))
+            textSize = 14f
+            setOnClickListener { copyAllText() }
+        }
+
+        val exitBtn = Button(context).apply {
+            text = if (language == "zh") "退出" else "Exit"
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.argb(200, 244, 67, 54))
+            setPadding(dp(24), dp(6), dp(24), dp(6))
+            textSize = 14f
+            setOnClickListener { onDismissListener?.invoke() }
+        }
+
+        val btnParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { marginStart = dp(8) }
+
+        btnRow.addView(exitBtn, btnParams)
+        btnRow.addView(copyAllBtn, btnParams)
+        btnRow.addView(copyBtn, btnParams)
+
+        val rowParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(10) }
+        panel.addView(btnRow, rowParams)
+
+        return panel
+    }
+
+    private fun showBottomPanel(text: String) {
+        editText.setText(text)
+        editText.setSelection(text.length)
+        bottomPanel.visibility = View.VISIBLE
+    }
+
+    private fun hideBottomPanel() {
+        bottomPanel.visibility = View.GONE
+        selectedIndex = -1
+        canvasView.selectedIndex = -1
+        canvasView.invalidate()
+        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(editText.windowToken, 0)
+    }
+
+    private fun copyText() {
+        val text = editText.text.toString()
+        if (text.isNotBlank()) {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("GlobalCopy", text))
+            Toast.makeText(context, R.string.copied_toast, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun copyAllText() {
+        val allText = textNodes.joinToString("\n") { it.text }
+        if (allText.isNotBlank()) {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("GlobalCopy", allText))
+            Toast.makeText(context, R.string.copied_toast, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+            if (bottomPanel.visibility == View.VISIBLE) {
+                hideBottomPanel()
+            } else {
+                onDismissListener?.invoke()
+            }
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun dp(value: Int): Int {
+        return (value * context.resources.displayMetrics.density).toInt()
+    }
+
+    companion object {
+        private const val EDIT_TEXT_ID = 0x7F100001
+    }
+
+    @SuppressLint("ViewConstructor")
+    inner class CanvasOverlay(context: Context) : View(context) {
+
+        var selectedIndex = -1
+
+        // View's own position on screen, used to correct node bounds
+        private val viewLocationOnScreen = IntArray(2)
+
+        private val dimPaint = Paint().apply {
+            color = Color.argb(100, 0, 0, 0)
+            style = Paint.Style.FILL
+        }
+
+        private val highlightPaint = Paint().apply {
+            color = Color.argb(50, 33, 150, 243)
+            style = Paint.Style.FILL
+        }
+
+        private val borderPaint = Paint().apply {
+            color = Color.argb(160, 33, 150, 243)
+            style = Paint.Style.STROKE
+            strokeWidth = 2f
+            isAntiAlias = true
+        }
+
+        private val selectedPaint = Paint().apply {
+            color = Color.argb(80, 76, 175, 80)
+            style = Paint.Style.FILL
+        }
+
+        private val selectedBorderPaint = Paint().apply {
+            color = Color.argb(220, 76, 175, 80)
+            style = Paint.Style.STROKE
+            strokeWidth = 3f
+            isAntiAlias = true
+        }
+
+        private val hintPaint = Paint().apply {
+            color = Color.WHITE
+            textSize = 30f
+            isAntiAlias = true
+            textAlign = Paint.Align.CENTER
+        }
+
+        private val hintBgPaint = Paint().apply {
+            color = Color.argb(180, 0, 0, 0)
+            style = Paint.Style.FILL
+            isAntiAlias = true
+        }
+
+        private val langLabelPaint = Paint().apply {
+            color = Color.argb(200, 255, 255, 255)
+            textSize = 24f
+            isAntiAlias = true
+            textAlign = Paint.Align.LEFT
+        }
+
+        /**
+         * Convert screen-absolute bounds to view-local bounds
+         * by subtracting the view's own screen position.
+         */
+        private fun toLocalRect(node: TextNodeInfo): RectF {
+            getLocationOnScreen(viewLocationOnScreen)
+            val offsetX = viewLocationOnScreen[0].toFloat()
+            val offsetY = viewLocationOnScreen[1].toFloat()
+            return RectF(
+                node.bounds.left - offsetX,
+                node.bounds.top - offsetY,
+                node.bounds.right - offsetX,
+                node.bounds.bottom - offsetY
+            )
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+
+            // Dim background
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), dimPaint)
+
+            // Draw text node highlights with corrected coordinates
+            for ((index, node) in textNodes.withIndex()) {
+                val rect = toLocalRect(node)
+                if (index == selectedIndex) {
+                    canvas.drawRoundRect(rect, 4f, 4f, selectedPaint)
+                    canvas.drawRoundRect(rect, 4f, 4f, selectedBorderPaint)
+                } else {
+                    canvas.drawRoundRect(rect, 4f, 4f, highlightPaint)
+                    canvas.drawRoundRect(rect, 4f, 4f, borderPaint)
+                }
+            }
+
+            // Top hint bar
+            val hintText = if (language == "zh") {
+                "点击蓝色区域识别文字"
+            } else {
+                "Tap blue areas to recognize text"
+            }
+            val langLabel = if (language == "zh") "中文" else "EN"
+            val hintY = 80f
+            val hintWidth = hintPaint.measureText(hintText)
+            val hintRect = RectF(
+                width / 2f - hintWidth / 2 - 32f,
+                hintY - 30f,
+                width / 2f + hintWidth / 2 + 32f,
+                hintY + 14f
+            )
+            canvas.drawRoundRect(hintRect, 20f, 20f, hintBgPaint)
+            canvas.drawText(hintText, width / 2f, hintY, hintPaint)
+
+            // Language badge top-left
+            val badgeRect = RectF(dp(12).toFloat(), dp(36).toFloat(), dp(60).toFloat(), dp(58).toFloat())
+            canvas.drawRoundRect(badgeRect, 10f, 10f, hintBgPaint)
+            canvas.drawText(langLabel, dp(18).toFloat(), dp(52).toFloat(), langLabelPaint)
+        }
+
+        @SuppressLint("ClickableViewAccessibility")
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            if (event.action == MotionEvent.ACTION_UP) {
+                // event.rawX/rawY are in screen coordinates, match with node bounds directly
+                val screenX = event.rawX.toInt()
+                val screenY = event.rawY.toInt()
+                val index = findNodeAtScreenPoint(screenX, screenY)
+                if (index >= 0) {
+                    selectedIndex = index
+                    this@CopyOverlayView.selectedIndex = index
+                    invalidate()
+                    showBottomPanel(textNodes[index].text)
+                } else {
+                    if (bottomPanel.visibility == View.VISIBLE) {
+                        hideBottomPanel()
+                    } else {
+                        onDismissListener?.invoke()
+                    }
+                }
+                return true
+            }
+            return true
+        }
+
+        /**
+         * Find node using screen-absolute coordinates (matching getBoundsInScreen).
+         */
+        private fun findNodeAtScreenPoint(x: Int, y: Int): Int {
+            var bestIndex = -1
+            var bestArea = Int.MAX_VALUE
+            for ((index, node) in textNodes.withIndex()) {
+                if (node.bounds.contains(x, y)) {
+                    val area = node.bounds.width() * node.bounds.height()
+                    if (area < bestArea) {
+                        bestArea = area
+                        bestIndex = index
+                    }
+                }
+            }
+            return bestIndex
+        }
+    }
+}
