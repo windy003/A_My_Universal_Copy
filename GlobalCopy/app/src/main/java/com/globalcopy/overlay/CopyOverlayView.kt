@@ -209,7 +209,7 @@ class CopyOverlayView(
 
         var selectedIndex = -1
 
-        // View's own position on screen, used to correct node bounds
+        // View在屏幕上的位置，用于修正节点边界坐标
         private val viewLocationOnScreen = IntArray(2)
 
         private val dimPaint = Paint().apply {
@@ -262,8 +262,8 @@ class CopyOverlayView(
         }
 
         /**
-         * Convert screen-absolute bounds to view-local bounds
-         * by subtracting the view's own screen position.
+         * 将屏幕绝对坐标转换为View本地坐标，
+         * 通过减去View自身的屏幕位置来实现。
          */
         private fun toLocalRect(node: TextNodeInfo): RectF {
             getLocationOnScreen(viewLocationOnScreen)
@@ -280,10 +280,10 @@ class CopyOverlayView(
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
 
-            // Dim background
+            // 半透明背景遮罩
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), dimPaint)
 
-            // Draw text node highlights with corrected coordinates
+            // 使用修正后的坐标绘制文本节点高亮
             for ((index, node) in textNodes.withIndex()) {
                 val rect = toLocalRect(node)
                 if (index == selectedIndex) {
@@ -295,7 +295,7 @@ class CopyOverlayView(
                 }
             }
 
-            // Top hint bar
+            // 顶部提示栏
             val hintText = if (language == "zh") {
                 "点击蓝色区域识别文字"
             } else {
@@ -313,7 +313,7 @@ class CopyOverlayView(
             canvas.drawRoundRect(hintRect, 20f, 20f, hintBgPaint)
             canvas.drawText(hintText, width / 2f, hintY, hintPaint)
 
-            // Language badge top-left
+            // 左上角语言标签
             val badgeRect = RectF(dp(12).toFloat(), dp(36).toFloat(), dp(60).toFloat(), dp(58).toFloat())
             canvas.drawRoundRect(badgeRect, 10f, 10f, hintBgPaint)
             canvas.drawText(langLabel, dp(18).toFloat(), dp(52).toFloat(), langLabelPaint)
@@ -322,7 +322,7 @@ class CopyOverlayView(
         @SuppressLint("ClickableViewAccessibility")
         override fun onTouchEvent(event: MotionEvent): Boolean {
             if (event.action == MotionEvent.ACTION_UP) {
-                // event.rawX/rawY are in screen coordinates, match with node bounds directly
+                // event.rawX/rawY是屏幕坐标，直接与节点边界进行匹配
                 val screenX = event.rawX.toInt()
                 val screenY = event.rawY.toInt()
                 val index = findNodeAtScreenPoint(screenX, screenY)
@@ -344,7 +344,7 @@ class CopyOverlayView(
         }
 
         /**
-         * Find node using screen-absolute coordinates (matching getBoundsInScreen).
+         * 使用屏幕绝对坐标查找节点（与getBoundsInScreen匹配）。
          */
         private fun findNodeAtScreenPoint(x: Int, y: Int): Int {
             var bestIndex = -1

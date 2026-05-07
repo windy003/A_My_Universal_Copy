@@ -11,11 +11,11 @@ class CollapsePanelActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Finish immediately so this activity is invisible
+        // 立即结束，使此Activity不可见
         finish()
 
-        // Delay to let the notification panel fully collapse,
-        // then trigger copy mode to collect text from the real app underneath
+        // 延迟等待通知面板完全收起，
+        // 然后触发复制模式，从下方真实应用中采集文本
         Handler(Looper.getMainLooper()).postDelayed({
             val service = GlobalCopyAccessibilityService.instance
             if (service != null && !GlobalCopyAccessibilityService.isCopyModeActive) {

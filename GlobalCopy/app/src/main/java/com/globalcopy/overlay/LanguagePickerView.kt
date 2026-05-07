@@ -33,10 +33,10 @@ class LanguagePickerView(
             background = bg
             setPadding(dp(24), dp(20), dp(24), dp(20))
             elevation = 16f
-            setOnClickListener { /* consume click */ }
+            setOnClickListener { /* 消费点击事件 */ }
         }
 
-        // Title
+        // 标题
         val title = TextView(context).apply {
             text = "选择语言 / Select Language"
             setTextColor(Color.WHITE)
@@ -47,17 +47,17 @@ class LanguagePickerView(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { bottomMargin = dp(20) })
 
-        // Chinese button
+        // 中文按钮
         dialog.addView(createLangButton("中文", "zh", Color.argb(200, 33, 150, 243)))
 
-        // English button
+        // 英文按钮
         dialog.addView(createLangButton("English", "en", Color.argb(200, 76, 175, 80)).apply {
             val lp = layoutParams as LinearLayout.LayoutParams
             lp.topMargin = dp(12)
             layoutParams = lp
         })
 
-        // Cancel button
+        // 取消按钮
         val cancelBtn = TextView(context).apply {
             text = "取消 / Cancel"
             setTextColor(Color.argb(180, 255, 255, 255))

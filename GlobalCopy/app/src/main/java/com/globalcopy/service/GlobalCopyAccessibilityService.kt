@@ -95,8 +95,8 @@ class GlobalCopyAccessibilityService : AccessibilityService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             try {
                 for (window in windows) {
-                    // Only collect from application windows, skip system UI
-                    // (status bar, navigation bar, notification panel, etc.)
+                    // 只从应用窗口中采集，跳过系统UI
+                    // （状态栏、导航栏、通知面板等）
                     if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION) continue
 
                     val root = window.root ?: continue
@@ -104,7 +104,7 @@ class GlobalCopyAccessibilityService : AccessibilityService() {
                     root.recycle()
                 }
             } catch (_: Exception) {
-                // Fallback
+                // 回退方案
                 val rootNode = rootInActiveWindow ?: return nodes
                 traverseNode(rootNode, nodes)
                 rootNode.recycle()
@@ -115,7 +115,7 @@ class GlobalCopyAccessibilityService : AccessibilityService() {
             rootNode.recycle()
         }
 
-        // Get screen dimensions and filter out nodes clearly off-screen
+        // 获取屏幕尺寸，过滤掉明显超出屏幕范围的节点
         val displayMetrics = resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels
         val screenHeight = displayMetrics.heightPixels
@@ -130,7 +130,7 @@ class GlobalCopyAccessibilityService : AccessibilityService() {
     }
 
     private fun traverseNode(node: AccessibilityNodeInfo, nodes: MutableList<TextNodeInfo>) {
-        // Skip invisible nodes
+        // 跳过不可见的节点
         if (!node.isVisibleToUser) return
 
         val text = node.text?.toString() ?: node.contentDescription?.toString()

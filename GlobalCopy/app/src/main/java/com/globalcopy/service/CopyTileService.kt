@@ -47,14 +47,14 @@ class CopyTileService : TileService() {
             service.deactivateCopyMode()
             updateTileState()
         } else {
-            // Use startActivityAndCollapse to collapse the panel,
-            // then CollapsePanelActivity triggers copy mode.
+            // 使用startActivityAndCollapse收起通知面板，
+            // 然后由CollapsePanelActivity触发复制模式。
             val intent = Intent(this, CollapsePanelActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                // API 34+: requires PendingIntent
+                // API 34+：需要使用PendingIntent
                 val pendingIntent = PendingIntent.getActivity(
                     this, 0, intent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
