@@ -6,6 +6,7 @@ import android.content.Context
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Build
+import android.provider.Settings
 import android.view.Gravity
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
@@ -164,11 +165,28 @@ class GlobalCopyAccessibilityService : AccessibilityService() {
     }
 
     private fun createOverlayParams(): WindowManager.LayoutParams {
-        val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_SYSTEM_OVERLAY
+        // 是否已授予悬浮窗权限（M 以下默认拥有）
+        val canOverlay = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
+
+        // 选择窗口类型：
+        // TYPE_ACCESSIBILITY_OVERLAY 无法弹出输入法（系统限制），
+        // 因此在已授予悬浮窗权限时改用支持输入法的应用级悬浮窗类型，
+        // 这样点击文本框才能正常弹出键盘进行编辑。
+        val layoutType = when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ->
+                if (canOverlay) {
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                } else {
+                    WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+                }
+            canOverlay -> {
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_PHONE
+            }
+            else -> {
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_SYSTEM_OVERLAY
+            }
         }
 
         return WindowManager.LayoutParams(
@@ -181,6 +199,8 @@ class GlobalCopyAccessibilityService : AccessibilityService() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
+            // 键盘弹出时调整窗口布局，避免底部输入面板被键盘遮挡
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }

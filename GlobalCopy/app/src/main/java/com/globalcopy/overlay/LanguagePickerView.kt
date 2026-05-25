@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -21,6 +22,8 @@ class LanguagePickerView(
         setBackgroundColor(Color.argb(150, 0, 0, 0))
         setOnClickListener { onCancel() }
         addDialogView()
+        isFocusable = true
+        isFocusableInTouchMode = true
     }
 
     private fun addDialogView() {
@@ -93,6 +96,15 @@ class LanguagePickerView(
             )
             setOnClickListener { onLanguageSelected(langCode) }
         }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+            // 返回手势/返回键：退出复制模式
+            onCancel()
+            return true
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     private fun dp(value: Int): Int {

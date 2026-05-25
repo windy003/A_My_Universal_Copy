@@ -8,10 +8,12 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
+import android.os.Build
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowInsets
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
@@ -50,6 +52,16 @@ class CopyOverlayView(
 
         isFocusable = true
         isFocusableInTouchMode = true
+
+        // 监听输入法高度，键盘弹出时把底部面板上移，避免被键盘遮挡。
+        // 因窗口带有 FLAG_LAYOUT_NO_LIMITS，系统的自动 resize 不生效，所以手动处理。
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            setOnApplyWindowInsetsListener { _, insets ->
+                val imeHeight = insets.getInsets(WindowInsets.Type.ime()).bottom
+                bottomPanel.translationY = -imeHeight.toFloat()
+                insets
+            }
+        }
     }
 
     private fun createBottomPanel(): LinearLayout {
@@ -97,6 +109,14 @@ class CopyOverlayView(
             setPadding(dp(12), dp(10), dp(12), dp(10))
             minLines = 2
             maxLines = 6
+            isFocusable = true
+            isFocusableInTouchMode = true
+            isCursorVisible = true
+            // 点击文本框时弹出输入法进行编辑
+            setOnClickListener { showKeyboard(it) }
+            onFocusChangeListener = View.OnFocusChangeListener { v, hasFocus ->
+                if (hasFocus) showKeyboard(v)
+            }
         }
         val etParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
@@ -157,6 +177,15 @@ class CopyOverlayView(
         bottomPanel.visibility = View.VISIBLE
     }
 
+    /** 让文本框获得焦点并弹出软键盘 */
+    private fun showKeyboard(view: View) {
+        view.requestFocus()
+        view.post {
+            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+        }
+    }
+
     private fun hideBottomPanel() {
         bottomPanel.visibility = View.GONE
         selectedIndex = -1
@@ -167,7 +196,24 @@ class CopyOverlayView(
     }
 
     private fun copyText() {
-        val text = editText.text.toString()
+        val full = editText.text?.toString() ?: ""
+        val start = editText.selectionStart
+        val end = editText.selectionEnd
+        // 复制文本框中选中的文本；若未选中则复制文本框全部内容
+        val text = if (start in 0..full.length && end in 0..full.length && start != end) {
+            full.substring(minOf(start, end), maxOf(start, end))
+        } else {
+            full
+        }
+        copyToClipboard(text)
+    }
+
+    private fun copyAllText() {
+        // 复制文本框中的全部内容
+        copyToClipboard(editText.text?.toString() ?: "")
+    }
+
+    private fun copyToClipboard(text: String) {
         if (text.isNotBlank()) {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("GlobalCopy", text))
@@ -175,22 +221,10 @@ class CopyOverlayView(
         }
     }
 
-    private fun copyAllText() {
-        val allText = textNodes.joinToString("\n") { it.text }
-        if (allText.isNotBlank()) {
-            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("GlobalCopy", allText))
-            Toast.makeText(context, R.string.copied_toast, Toast.LENGTH_SHORT).show()
-        }
-    }
-
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
-            if (bottomPanel.visibility == View.VISIBLE) {
-                hideBottomPanel()
-            } else {
-                onDismissListener?.invoke()
-            }
+            // 返回手势/返回键：直接退出复制模式
+            onDismissListener?.invoke()
             return true
         }
         return super.dispatchKeyEvent(event)
