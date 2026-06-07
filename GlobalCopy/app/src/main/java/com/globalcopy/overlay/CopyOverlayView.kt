@@ -36,7 +36,8 @@ class CopyOverlayView(
     private val canvasView: CanvasOverlay
     private val bottomPanel: LinearLayout
     private val editText: EditText
-    private var selectedIndex = -1
+    // 已点击的文本块索引，支持多选累加
+    private val selectedIndices = mutableSetOf<Int>()
 
     init {
         canvasView = CanvasOverlay(context)
@@ -171,9 +172,16 @@ class CopyOverlayView(
         return panel
     }
 
-    private fun showBottomPanel(text: String) {
-        editText.setText(text)
-        editText.setSelection(text.length)
+    private fun appendToBottomPanel(text: String) {
+        // 把新点击的文字追加到文本框，旧内容保留，用换行分隔
+        val existing = editText.text?.toString() ?: ""
+        val combined = if (existing.isBlank()) {
+            text
+        } else {
+            existing.trimEnd() + "\n" + text
+        }
+        editText.setText(combined)
+        editText.setSelection(combined.length)
         bottomPanel.visibility = View.VISIBLE
     }
 
@@ -188,8 +196,7 @@ class CopyOverlayView(
 
     private fun hideBottomPanel() {
         bottomPanel.visibility = View.GONE
-        selectedIndex = -1
-        canvasView.selectedIndex = -1
+        selectedIndices.clear()
         canvasView.invalidate()
         val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         imm.hideSoftInputFromWindow(editText.windowToken, 0)
@@ -240,8 +247,6 @@ class CopyOverlayView(
 
     @SuppressLint("ViewConstructor")
     inner class CanvasOverlay(context: Context) : View(context) {
-
-        var selectedIndex = -1
 
         // View在屏幕上的位置，用于修正节点边界坐标
         private val viewLocationOnScreen = IntArray(2)
@@ -320,7 +325,7 @@ class CopyOverlayView(
             // 使用修正后的坐标绘制文本节点高亮
             for ((index, node) in textNodes.withIndex()) {
                 val rect = toLocalRect(node)
-                if (index == selectedIndex) {
+                if (selectedIndices.contains(index)) {
                     canvas.drawRoundRect(rect, 4f, 4f, selectedPaint)
                     canvas.drawRoundRect(rect, 4f, 4f, selectedBorderPaint)
                 } else {
@@ -361,10 +366,11 @@ class CopyOverlayView(
                 val screenY = event.rawY.toInt()
                 val index = findNodeAtScreenPoint(screenX, screenY)
                 if (index >= 0) {
-                    selectedIndex = index
-                    this@CopyOverlayView.selectedIndex = index
+                    // 累加点击：已点过的块不再重复添加文字
+                    if (selectedIndices.add(index)) {
+                        appendToBottomPanel(textNodes[index].text)
+                    }
                     invalidate()
-                    showBottomPanel(textNodes[index].text)
                 } else {
                     if (bottomPanel.visibility == View.VISIBLE) {
                         hideBottomPanel()
