@@ -19,7 +19,6 @@ import android.widget.Toast
 import androidx.annotation.RequiresApi
 import com.globalcopy.R
 import com.globalcopy.overlay.CopyOverlayView
-import com.globalcopy.overlay.LanguagePickerView
 
 class GlobalCopyAccessibilityService : AccessibilityService() {
 
@@ -31,7 +30,6 @@ class GlobalCopyAccessibilityService : AccessibilityService() {
     }
 
     private var overlayView: CopyOverlayView? = null
-    private var languagePickerView: LanguagePickerView? = null
     private var windowManager: WindowManager? = null
     private var cachedTextNodes: List<TextNodeInfo> = emptyList()
 
@@ -67,34 +65,14 @@ class GlobalCopyAccessibilityService : AccessibilityService() {
             return
         }
 
-        showLanguagePicker()
+        // 固定使用中文界面，直接进入识别叠层
+        showOverlay(cachedTextNodes, "zh")
     }
 
     fun deactivateCopyMode() {
         isCopyModeActive = false
         cachedTextNodes = emptyList()
         dismissAll()
-    }
-
-    private fun showLanguagePicker() {
-        dismissLanguagePicker()
-
-        val picker = LanguagePickerView(this,
-            onLanguageSelected = { lang ->
-                dismissLanguagePicker()
-                showOverlay(cachedTextNodes, lang)
-            },
-            onCancel = {
-                dismissLanguagePicker()
-                isCopyModeActive = false
-                cachedTextNodes = emptyList()
-                CopyTileService.instance?.updateTileState()
-            }
-        )
-
-        val params = createOverlayParams()
-        windowManager?.addView(picker, params)
-        languagePickerView = picker
     }
 
     private fun collectAppTextNodes(): List<TextNodeInfo> {
@@ -284,13 +262,6 @@ class GlobalCopyAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun dismissLanguagePicker() {
-        languagePickerView?.let {
-            try { windowManager?.removeView(it) } catch (_: Exception) {}
-        }
-        languagePickerView = null
-    }
-
     private fun dismissOverlay() {
         overlayView?.let {
             try { windowManager?.removeView(it) } catch (_: Exception) {}
@@ -299,7 +270,6 @@ class GlobalCopyAccessibilityService : AccessibilityService() {
     }
 
     private fun dismissAll() {
-        dismissLanguagePicker()
         dismissOverlay()
     }
 
