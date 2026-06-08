@@ -7,6 +7,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Build
 import android.view.Gravity
@@ -27,15 +28,22 @@ import com.globalcopy.service.GlobalCopyAccessibilityService.TextNodeInfo
 @SuppressLint("ViewConstructor")
 class CopyOverlayView(
     context: Context,
-    private val textNodes: List<TextNodeInfo>,
-    private val language: String
+    textNodes: List<TextNodeInfo>,
+    private val language: String,
+    private val showOcrButton: Boolean = false
 ) : FrameLayout(context) {
 
     var onDismissListener: (() -> Unit)? = null
+    // 请求执行 OCR（由无障碍服务完成截屏+识别）
+    var onOcrRequested: (() -> Unit)? = null
+
+    // 当前展示的文本块，OCR 结果会追加进来
+    private val displayNodes = textNodes.toMutableList()
 
     private val canvasView: CanvasOverlay
     private val bottomPanel: LinearLayout
     private val editText: EditText
+    private var ocrButton: Button? = null
     // 已点击的文本块索引，支持多选累加
     private val selectedIndices = mutableSetOf<Int>()
 
@@ -50,6 +58,28 @@ class CopyOverlayView(
         addView(bottomPanel, panelParams)
 
         editText = bottomPanel.findViewById(EDIT_TEXT_ID)
+
+        // OCR 按钮：常驻右上角，点击截屏识别。仅在系统支持时显示。
+        if (showOcrButton) {
+            val btn = Button(context).apply {
+                text = if (language == "zh") "OCR 识别" else "OCR"
+                setTextColor(Color.WHITE)
+                setBackgroundColor(Color.argb(220, 156, 39, 176))
+                setPadding(dp(20), dp(8), dp(20), dp(8))
+                textSize = 14f
+                elevation = 8f
+                setOnClickListener { onOcrRequested?.invoke() }
+            }
+            val btnParams = LayoutParams(
+                LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.END
+                topMargin = dp(36)
+                marginEnd = dp(12)
+            }
+            addView(btn, btnParams)
+            ocrButton = btn
+        }
 
         isFocusable = true
         isFocusableInTouchMode = true
@@ -183,6 +213,36 @@ class CopyOverlayView(
         editText.setText(combined)
         editText.setSelection(combined.length)
         bottomPanel.visibility = View.VISIBLE
+    }
+
+    /** 把 OCR 识别结果加入叠层（去重后追加），刷新蓝色框 */
+    fun addOcrNodes(nodes: List<TextNodeInfo>) {
+        var added = 0
+        for (node in nodes) {
+            // 跳过与已有块文字相同且位置重叠的结果，避免重复框
+            val duplicate = displayNodes.any {
+                it.text == node.text && Rect.intersects(it.bounds, node.bounds)
+            }
+            if (duplicate) continue
+            displayNodes.add(node)
+            added++
+        }
+        if (added == 0) {
+            Toast.makeText(context, R.string.ocr_no_text_toast, Toast.LENGTH_SHORT).show()
+        } else {
+            canvasView.invalidate()
+        }
+    }
+
+    /** 设置 OCR 按钮的加载状态（识别期间禁用并提示） */
+    fun setOcrButtonLoading(loading: Boolean) {
+        ocrButton?.apply {
+            isEnabled = !loading
+            text = when {
+                loading -> if (language == "zh") "识别中…" else "..."
+                else -> if (language == "zh") "OCR 识别" else "OCR"
+            }
+        }
     }
 
     /** 让文本框获得焦点并弹出软键盘 */
@@ -323,7 +383,7 @@ class CopyOverlayView(
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), dimPaint)
 
             // 使用修正后的坐标绘制文本节点高亮
-            for ((index, node) in textNodes.withIndex()) {
+            for ((index, node) in displayNodes.withIndex()) {
                 val rect = toLocalRect(node)
                 if (selectedIndices.contains(index)) {
                     canvas.drawRoundRect(rect, 4f, 4f, selectedPaint)
@@ -368,7 +428,7 @@ class CopyOverlayView(
                 if (index >= 0) {
                     // 累加点击：已点过的块不再重复添加文字
                     if (selectedIndices.add(index)) {
-                        appendToBottomPanel(textNodes[index].text)
+                        appendToBottomPanel(displayNodes[index].text)
                     }
                     invalidate()
                 } else {
@@ -389,7 +449,7 @@ class CopyOverlayView(
         private fun findNodeAtScreenPoint(x: Int, y: Int): Int {
             var bestIndex = -1
             var bestArea = Int.MAX_VALUE
-            for ((index, node) in textNodes.withIndex()) {
+            for ((index, node) in displayNodes.withIndex()) {
                 if (node.bounds.contains(x, y)) {
                     val area = node.bounds.width() * node.bounds.height()
                     if (area < bestArea) {

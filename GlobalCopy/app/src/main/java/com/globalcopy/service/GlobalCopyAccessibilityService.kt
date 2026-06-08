@@ -3,16 +3,20 @@ package com.globalcopy.service
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Build
 import android.provider.Settings
+import android.view.Display
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.Toast
+import androidx.annotation.RequiresApi
 import com.globalcopy.R
 import com.globalcopy.overlay.CopyOverlayView
 import com.globalcopy.overlay.LanguagePickerView
@@ -53,7 +57,10 @@ class GlobalCopyAccessibilityService : AccessibilityService() {
         isCopyModeActive = true
 
         cachedTextNodes = collectAppTextNodes()
-        if (cachedTextNodes.isEmpty()) {
+        // 取不到无障碍文字时：若系统支持 OCR（API 30+），仍进入叠层让用户用 OCR 识别；
+        // 否则提示未找到文本并退出。
+        val ocrSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+        if (cachedTextNodes.isEmpty() && !ocrSupported) {
             Toast.makeText(this, R.string.no_text_toast, Toast.LENGTH_SHORT).show()
             isCopyModeActive = false
             CopyTileService.instance?.updateTileState()
@@ -153,15 +160,85 @@ class GlobalCopyAccessibilityService : AccessibilityService() {
     private fun showOverlay(textNodes: List<TextNodeInfo>, language: String) {
         dismissOverlay()
 
-        val overlay = CopyOverlayView(this, textNodes, language)
+        // OCR 依赖 takeScreenshot()，仅 Android 11 (API 30) 及以上可用
+        val ocrSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+
+        val overlay = CopyOverlayView(this, textNodes, language, ocrSupported)
         overlay.onDismissListener = {
             deactivateCopyMode()
             CopyTileService.instance?.updateTileState()
         }
+        overlay.onOcrRequested = { runOcrFromScreenshot() }
 
         val params = createOverlayParams()
         windowManager?.addView(overlay, params)
         overlayView = overlay
+    }
+
+    /**
+     * 截取当前屏幕并进行 OCR 文字识别，把结果加入叠层。
+     * 截屏前先隐藏叠层，避免遮罩和蓝色框被一并识别。
+     */
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun runOcrFromScreenshot() {
+        val overlay = overlayView ?: return
+        overlay.setOcrButtonLoading(true)
+        // 隐藏叠层，延迟一帧确保其内容已从屏幕移除后再截屏
+        overlay.visibility = View.INVISIBLE
+        overlay.postDelayed({
+            try {
+                takeScreenshot(
+                    Display.DEFAULT_DISPLAY,
+                    mainExecutor,
+                    object : TakeScreenshotCallback {
+                        override fun onSuccess(screenshot: ScreenshotResult) {
+                            val hwBitmap = Bitmap.wrapHardwareBuffer(
+                                screenshot.hardwareBuffer, screenshot.colorSpace
+                            )
+                            // ML Kit 无法处理 HARDWARE 配置的 Bitmap，需拷贝为软件位图
+                            val bitmap = hwBitmap?.copy(Bitmap.Config.ARGB_8888, false)
+                            hwBitmap?.recycle()
+                            screenshot.hardwareBuffer.close()
+
+                            overlay.visibility = View.VISIBLE
+                            if (bitmap == null) {
+                                overlay.setOcrButtonLoading(false)
+                                toastOcrFailed()
+                                return
+                            }
+                            OcrHelper.recognize(
+                                bitmap,
+                                onResult = { nodes ->
+                                    bitmap.recycle()
+                                    overlay.setOcrButtonLoading(false)
+                                    overlay.addOcrNodes(nodes)
+                                },
+                                onError = {
+                                    bitmap.recycle()
+                                    overlay.setOcrButtonLoading(false)
+                                    toastOcrFailed()
+                                }
+                            )
+                        }
+
+                        override fun onFailure(errorCode: Int) {
+                            overlay.visibility = View.VISIBLE
+                            overlay.setOcrButtonLoading(false)
+                            toastOcrFailed()
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                // 截屏接口异常（如缺少能力）不应导致无障碍服务崩溃
+                overlay.visibility = View.VISIBLE
+                overlay.setOcrButtonLoading(false)
+                toastOcrFailed()
+            }
+        }, 150)
+    }
+
+    private fun toastOcrFailed() {
+        Toast.makeText(this, R.string.ocr_failed_toast, Toast.LENGTH_SHORT).show()
     }
 
     private fun createOverlayParams(): WindowManager.LayoutParams {

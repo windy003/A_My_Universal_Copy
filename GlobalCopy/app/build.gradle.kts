@@ -12,7 +12,7 @@ android {
         minSdk = 24
         targetSdk = 34
         versionCode = 1
-        versionName = "2026/5/26-1"
+        versionName = "2026/6/8-1"
     }
 
     buildTypes {
@@ -37,4 +37,6 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+    // ML Kit 离线文字识别（中文模型同时支持拉丁/英文字符）
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
 }

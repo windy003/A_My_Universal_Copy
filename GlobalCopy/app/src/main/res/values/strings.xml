@@ -12,4 +12,6 @@
     <string name="copied_toast">已复制到剪贴板</string>
     <string name="no_text_toast">未找到可复制的文本</string>
     <string name="exit_hint">点击空白区域或返回键退出复制模式</string>
+    <string name="ocr_failed_toast">文字识别失败，请重试</string>
+    <string name="ocr_no_text_toast">未识别到文字</string>
 </resources>
