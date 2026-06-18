@@ -44,6 +44,16 @@ class CopyOverlayView(
     private val bottomPanel: LinearLayout
     private val editText: EditText
     private var ocrButton: Button? = null
+    // 叠层内自绘的提示条（替代系统 Toast，避免被面板遮挡或被 ROM 屏蔽）
+    private val messageView = TextView(context).apply {
+        setTextColor(Color.WHITE)
+        setBackgroundColor(Color.argb(220, 0, 0, 0))
+        setPadding(dp(20), dp(12), dp(20), dp(12))
+        textSize = 15f
+        elevation = 16f
+        visibility = View.GONE
+    }
+    private val hideMessageRunnable = Runnable { messageView.visibility = View.GONE }
     // 已点击的文本块索引，支持多选累加
     private val selectedIndices = mutableSetOf<Int>()
 
@@ -58,6 +68,12 @@ class CopyOverlayView(
         addView(bottomPanel, panelParams)
 
         editText = bottomPanel.findViewById(EDIT_TEXT_ID)
+
+        // 居中提示条：复制成功/失败时短暂显示，自动消失
+        val msgParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+            gravity = Gravity.CENTER
+        }
+        addView(messageView, msgParams)
 
         // OCR 按钮：常驻右上角，点击截屏识别。仅在系统支持时显示。
         if (showOcrButton) {
@@ -267,25 +283,41 @@ class CopyOverlayView(
         val start = editText.selectionStart
         val end = editText.selectionEnd
         // 复制文本框中选中的文本；若未选中则复制文本框全部内容
-        val text = if (start in 0..full.length && end in 0..full.length && start != end) {
+        val hasSelection = start in 0..full.length && end in 0..full.length && start != end
+        val text = if (hasSelection) {
             full.substring(minOf(start, end), maxOf(start, end))
         } else {
             full
         }
-        copyToClipboard(text)
+        // 选中部分时提示「已复制选中文本」，否则提示「已复制全部文本」
+        val successMsg = if (hasSelection) R.string.copied_selected_toast else R.string.copied_all_toast
+        copyToClipboard(text, successMsg)
     }
 
     private fun copyAllText() {
         // 复制文本框中的全部内容
-        copyToClipboard(editText.text?.toString() ?: "")
+        copyToClipboard(editText.text?.toString() ?: "", R.string.copied_all_toast)
     }
 
-    private fun copyToClipboard(text: String) {
+    private fun copyToClipboard(text: String, successMsgRes: Int) {
         if (text.isNotBlank()) {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("GlobalCopy", text))
-            Toast.makeText(context, R.string.copied_toast, Toast.LENGTH_SHORT).show()
+            // 复制成功后在叠层内弹出提示
+            showMessage(successMsgRes)
+        } else {
+            // 没有可复制的内容时提示失败
+            showMessage(R.string.no_text_toast)
         }
+    }
+
+    /** 在叠层内居中显示一条提示，短暂停留后自动消失 */
+    private fun showMessage(msgRes: Int) {
+        messageView.setText(msgRes)
+        messageView.visibility = View.VISIBLE
+        messageView.bringToFront()
+        messageView.removeCallbacks(hideMessageRunnable)
+        messageView.postDelayed(hideMessageRunnable, 1500)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

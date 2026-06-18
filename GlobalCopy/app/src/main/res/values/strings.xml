@@ -10,6 +10,8 @@
     <string name="usage_hint">下拉通知栏，点击「全局复制」磁贴进入复制模式</string>
     <string name="copy_mode_hint">点击文本区域即可复制</string>
     <string name="copied_toast">已复制到剪贴板</string>
+    <string name="copied_selected_toast">已复制选中文本</string>
+    <string name="copied_all_toast">已复制全部文本</string>
     <string name="no_text_toast">未找到可复制的文本</string>
     <string name="exit_hint">点击空白区域或返回键退出复制模式</string>
     <string name="ocr_failed_toast">文字识别失败，请重试</string>
