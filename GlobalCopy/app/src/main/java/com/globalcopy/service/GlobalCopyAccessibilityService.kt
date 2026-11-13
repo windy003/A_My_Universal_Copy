@@ -19,6 +19,7 @@ import android.widget.Toast
 import androidx.annotation.RequiresApi
 import com.globalcopy.R
 import com.globalcopy.overlay.CopyOverlayView
+import com.globalcopy.ui.CollapsePanelActivity
 
 class GlobalCopyAccessibilityService : AccessibilityService() {
 
@@ -48,10 +49,12 @@ class GlobalCopyAccessibilityService : AccessibilityService() {
         dismissAll()
         instance = null
         isCopyModeActive = false
+        CollapsePanelActivity.finishIfAlive()
     }
 
-    fun activateCopyMode() {
-        if (isCopyModeActive) return
+    /** @return 是否成功进入复制模式并显示叠层 */
+    fun activateCopyMode(): Boolean {
+        if (isCopyModeActive) return true
         isCopyModeActive = true
 
         cachedTextNodes = collectAppTextNodes()
@@ -62,17 +65,24 @@ class GlobalCopyAccessibilityService : AccessibilityService() {
             Toast.makeText(this, R.string.no_text_toast, Toast.LENGTH_SHORT).show()
             isCopyModeActive = false
             CopyTileService.instance?.updateTileState()
-            return
+            return false
         }
 
         // 固定使用中文界面，直接进入识别叠层
-        showOverlay(cachedTextNodes, "zh")
+        val shown = showOverlay(cachedTextNodes, "zh")
+        if (!shown) {
+            isCopyModeActive = false
+            CopyTileService.instance?.updateTileState()
+        }
+        return shown
     }
 
     fun deactivateCopyMode() {
         isCopyModeActive = false
         cachedTextNodes = emptyList()
         dismissAll()
+        // 关闭中转 Activity，把焦点交还目标应用
+        CollapsePanelActivity.finishIfAlive()
     }
 
     private fun collectAppTextNodes(): List<TextNodeInfo> {
@@ -135,7 +145,7 @@ class GlobalCopyAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun showOverlay(textNodes: List<TextNodeInfo>, language: String) {
+    private fun showOverlay(textNodes: List<TextNodeInfo>, language: String): Boolean {
         dismissOverlay()
 
         // OCR 依赖 takeScreenshot()，仅 Android 11 (API 30) 及以上可用
@@ -149,8 +159,15 @@ class GlobalCopyAccessibilityService : AccessibilityService() {
         overlay.onOcrRequested = { runOcrFromScreenshot() }
 
         val params = createOverlayParams()
-        windowManager?.addView(overlay, params)
-        overlayView = overlay
+        val wm = windowManager ?: return false
+        return try {
+            wm.addView(overlay, params)
+            overlayView = overlay
+            true
+        } catch (_: Exception) {
+            // 添加悬浮窗失败时也不应让中转 Activity 一直停留，交由调用方退出复制模式
+            false
+        }
     }
 
     /**
